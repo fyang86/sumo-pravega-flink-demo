@@ -65,11 +65,12 @@ def run_simulation(
                 # print(event)
                 lane_writer.write_event(json.dumps(event),
                                         routing_key=str(step))
-        # deal with speeding cars every 50 steps
-        speeding_vehicle()
+        # deal with speeding cars
+        if step == 25:
+            speeding_vehicle()
 
 
-        time.sleep(1)
+        # time.sleep(1)
 
 
 def create_vehicle_writer(manager: StreamManager) -> StreamWriter:

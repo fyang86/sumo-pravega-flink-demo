@@ -2,6 +2,8 @@ from pyflink.common.typeinfo import Types
 from pyflink.datastream import StreamExecutionEnvironment
 from pyflink.table.table_environment import StreamTableEnvironment
 
+import traci
+
 
 def speeding_vehicle():
     env = StreamExecutionEnvironment.get_execution_environment()
@@ -25,7 +27,7 @@ def speeding_vehicle():
                                 'connector' = 'pravega',
                                 'controller-uri' = 'tcp://localhost:9090', 
                                 'scope' = 'sumo',
-                                'scan.execution.type' = 'streaming',
+                                'scan.execution.type' = 'batch',
                                 'scan.streams' = 'vehicleStream',
                                 'format' = 'json'              
                             )
@@ -39,15 +41,19 @@ def speeding_vehicle():
     """
 
 
-    speeding_vehicles = t_env.sql_query(query)
-    t_env.to_append_stream(
-        speeding_vehicles,
-        Types.ROW_NAMED(['timestep', 'id', 'lane', 'pos', 'speed'], [
-            Types.FLOAT(),
-            Types.FLOAT(),
-            Types.STRING(),
-            Types.FLOAT(),
-            Types.FLOAT()
-        ])).print()
+    speeding_set = set()
+    with t_env.sql_query(query).execute().collect() as results:
+        for result in results:
+            result.set_field_names(['timestep', 'id', 'lane', 'pos', 'speed'])
+            vehicle_id = result.as_dict().get('id')
+            speeding_set.add(vehicle_id)
 
-    env.execute('Speeding vehicles')
+    for vehicle_id in speeding_set:
+        print(vehicle_id)
+        traci.vehicle.setStop(vehID=str(vehicle_id),
+                              edgeID=traci.vehicle.getRoadID(str(vehicle_id)),
+                              pos=traci.vehicle.getLanePosition(str(vehicle_id)),
+                              duration=10.00)
+
+
+    # env.execute('Speeding vehicles')
