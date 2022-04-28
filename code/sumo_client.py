@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import time
 
 import traci
 from pravega_client import StreamManager
@@ -22,7 +23,7 @@ LANE_STREAM = 'laneStream'
 
 
 def start_sumo(sumo_config: str):
-    sumo_cmd = [SUMO_BIN, "-c", sumo_config, "--start", "--step-length", "1", "--delay", "100"]
+    sumo_cmd = [SUMO_BIN, "-c", sumo_config, "--start", "--step-length", "1"]
     traci.start(sumo_cmd)
 
 
@@ -70,22 +71,26 @@ def run_simulation(
         if step == 25:
             speeding_set = speeding_vehicle(step)
             for vehicle_id in speeding_set:
-                print(vehicle_id)
+                print(f"stopping speeding vehicle {vehicle_id}")
                 traci.vehicle.setStop(vehID=vehicle_id,
                                       edgeID=traci.vehicle.getRoadID(vehicle_id),
-                                      pos=traci.vehicle.getLanePosition(vehicle_id),
+                                      pos=traci.lane.getLength(traci.vehicle.getLaneID(vehicle_id)),
+                                      laneIndex=traci.vehicle.getLaneIndex(vehicle_id),
                                       duration=10.00)
 
-        # close the busiest lane currently for 10 timesteps
+        # close the most congested lane currently for 10 timesteps
         if step == 10:
             closing_lane_list = closing_lane(step)
             for lane_id in closing_lane_list:
+                print(f"closing congested lane {lane_id} for 40 timesteps")
                 traci.lane.setDisallowed(lane_id, ['passenger'])
 
-        if step == 20:
+        if step == 50:
             for lane_id in closing_lane_list:
+                print(f"reopening lane {lane_id}")
                 traci.lane.setAllowed(lane_id, ['passenger'])
 
+        time.sleep(1)
 
 def create_vehicle_writer(manager: StreamManager) -> StreamWriter:
     manager.create_stream(scope_name=SCOPE,
