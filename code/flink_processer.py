@@ -8,6 +8,8 @@ def speeding_vehicle(step: int) -> Set[str]:
     env = StreamExecutionEnvironment.get_execution_environment()
     env.set_parallelism(1)
     t_env = StreamTableEnvironment.create(stream_execution_environment=env)
+
+    # you can also add your Pravega and ES connector jars here
     # t_env.get_config().get_configuration().set_string(
     #     "pipeline.jars",
     #     "file:///C:/workplace/sumo-test/sumo-pravega-flink-demo/lib/pravega-connectors-flink-1.13_2.12-0.10.1.jar"
@@ -21,7 +23,8 @@ def speeding_vehicle(step: int) -> Set[str]:
                                 waiting FLOAT,
                                 lane STRING,
                                 pos FLOAT,
-                                speed FLOAT
+                                speed FLOAT,
+                                ts TIMESTAMP(3)
                             ) WITH (
                                 'connector' = 'pravega',
                                 'controller-uri' = 'tcp://localhost:9090', 
@@ -32,11 +35,41 @@ def speeding_vehicle(step: int) -> Set[str]:
                             )
     """
 
+    es_table_ddl = f"""
+                    CREATE TABLE es_table ( 
+                        timestep FLOAT,
+                        id FLOAT,
+                        `type` STRING,
+                        waiting FLOAT,
+                        lane STRING,
+                        pos FLOAT,
+                        speed FLOAT,
+                        ts TIMESTAMP(3)
+                    ) WITH (
+                        'connector.type' = 'elasticsearch', 
+                        'connector.version' = '6',  
+                        'connector.hosts' = 'http://localhost:9200',
+                        'connector.index' = 'vehicle',
+                        'connector.document-type' = 'VehicleTable', 
+                        'connector.bulk-flush.max-actions' = '1',  
+                        'format.type' = 'json',  
+                        'update-mode' = 'append'
+                    )
+    """
+
+
+
     t_env.execute_sql(vehicle_source_ddl)
+    t_env.execute_sql(es_table_ddl)
 
     query = f"""
                 SELECT timestep, id, lane, pos, speed FROM VehicleTable
                 WHERE speed > 14.0 AND (lane = 'A0B0_0' or lane = 'B0A0_0') AND timestep > {step - 10} AND timestep <= {step}
+    """
+
+    es_query = f"""
+                INSERT INTO es_table
+                SELECT * FROM VehicleTable
     """
 
     speeding_set = set()
@@ -46,6 +79,8 @@ def speeding_vehicle(step: int) -> Set[str]:
             vehicle_id = str(result.as_dict().get('id'))
             speeding_set.add(vehicle_id)
 
+    t_env.execute_sql(es_query)
+
     return speeding_set
 
 
@@ -53,6 +88,8 @@ def closing_lane(step: int) -> Set[str]:
     env = StreamExecutionEnvironment.get_execution_environment()
     env.set_parallelism(1)
     t_env = StreamTableEnvironment.create(stream_execution_environment=env)
+
+    # you can also add your Pravega and ES connector jars here
     # t_env.get_config().get_configuration().set_string(
     #     "pipeline.jars",
     #     "file:///C:/workplace/sumo-test/sumo-pravega-flink-demo/lib/pravega-connectors-flink-1.13_2.12-0.10.1.jar"
@@ -65,7 +102,8 @@ def closing_lane(step: int) -> Set[str]:
                                     maxspeed FLOAT,
                                     meanspeed FLOAT,
                                     occupancy FLOAT,
-                                    vehicle_count FLOAT
+                                    vehicle_count FLOAT,
+                                    ts TIMESTAMP(3)
                                 ) WITH (
                                     'connector' = 'pravega',
                                     'controller-uri' = 'tcp://localhost:9090', 
@@ -76,12 +114,39 @@ def closing_lane(step: int) -> Set[str]:
                                 )
         """
 
+    es_table_ddl = f"""
+                                CREATE TABLE es_table_lane (
+                                    timestep FLOAT,
+                                    id STRING,
+                                    maxspeed FLOAT,
+                                    meanspeed FLOAT,
+                                    occupancy FLOAT,
+                                    vehicle_count FLOAT,
+                                    ts TIMESTAMP(3)
+                                ) WITH (
+                                    'connector.type' = 'elasticsearch', 
+                                    'connector.version' = '6',  
+                                    'connector.hosts' = 'http://localhost:9200',
+                                    'connector.index' = 'lane',
+                                    'connector.document-type' = 'LaneTable', 
+                                    'connector.bulk-flush.max-actions' = '1',  
+                                    'format.type' = 'json',  
+                                    'update-mode' = 'append'            
+                                )
+        """
+
     t_env.execute_sql(lane_source_ddl)
+    t_env.execute_sql(es_table_ddl)
 
     query = f"""
                     SELECT id, vehicle_count
                     FROM LaneTable
                     WHERE timestep = {step}
+    """
+
+    es_query_2 = f"""
+                    INSERT INTO es_table_lane
+                    SELECT * FROM LaneTable
     """
 
     lane_list = set()
@@ -96,5 +161,7 @@ def closing_lane(step: int) -> Set[str]:
                 max_veh_cnt = result.as_dict().get('vehicle_count')
             elif result.as_dict().get('vehicle_count') == max_veh_cnt:
                 lane_list.add(lane_id)
+
+    t_env.execute_sql(es_query_2)
 
     return lane_list

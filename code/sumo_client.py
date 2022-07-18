@@ -9,17 +9,20 @@ from pravega_client import StreamWriter
 
 from flink_processer import speeding_vehicle, closing_lane
 
-os.environ["SUMO_HOME"] = "C:/workplace/releases/sumo-1.12.0"
+os.environ["SUMO_HOME"] = "../bin/sumo-1.12.0"
 
 if 'SUMO_HOME' not in os.environ:
     sys.exit("please declare environment variable 'SUMO_HOME'")
 
 SUMO_BIN = os.path.join(os.environ["SUMO_HOME"], "bin", "sumo-gui")
 
+# Pravega static variables
 DEFAULT_CONTROLLER_URI = 'tcp://localhost:9090'
 SCOPE = 'sumo'
 VEHICLE_STREAM = 'vehicleStream'
 LANE_STREAM = 'laneStream'
+
+BASE_TIME = int(time.time())
 
 
 def start_sumo(sumo_config: str):
@@ -37,6 +40,9 @@ def run_simulation(
     for step in range(steps):
         traci.simulationStep()
 
+        time_array = time.localtime(step + BASE_TIME)
+        ts = time.strftime("%Y-%m-%d %H:%M:%S", time_array)
+
         # write vehicle data
         vehicle_list = traci.vehicle.getIDList()
         for vehicle_id in vehicle_list:
@@ -47,9 +53,9 @@ def run_simulation(
                 "waiting": traci.vehicle.getWaitingTime(vehicle_id),
                 "lane": traci.vehicle.getLaneID(vehicle_id),
                 "pos": float(traci.vehicle.getLanePosition(vehicle_id)),
-                "speed": float(traci.vehicle.getSpeed(vehicle_id))
+                "speed": float(traci.vehicle.getSpeed(vehicle_id)),
+                "ts": ts
             }
-            # print(event)
             vehicle_writer.write_event(json.dumps(event),
                                        routing_key=str(step))
 
@@ -62,12 +68,13 @@ def run_simulation(
                 "maxspeed": float(traci.lane.getMaxSpeed(lane_id)),
                 "meanspeed": float(traci.lane.getLastStepMeanSpeed(lane_id)),
                 "occupancy": float(traci.lane.getLastStepOccupancy(lane_id)),
-                "vehicle_count": float(traci.lane.getLastStepVehicleNumber(lane_id))
+                "vehicle_count": float(traci.lane.getLastStepVehicleNumber(lane_id)),
+                "ts": ts
             }
-            # print(event)
             lane_writer.write_event(json.dumps(event),
                                     routing_key=str(step))
-        # stop speeding cars within 10 timesteps for 10 steps
+
+        # stop speeding cars within 10 timesteps for 10 steps on step 25
         if step == 25:
             speeding_set = speeding_vehicle(step)
             for vehicle_id in speeding_set:
@@ -78,19 +85,18 @@ def run_simulation(
                                       laneIndex=traci.vehicle.getLaneIndex(vehicle_id),
                                       duration=10.00)
 
-        # close the most congested lane currently for 10 timesteps
-        if step == 10:
+        # close the most congested lane currently for 20 timesteps on step 45
+        if step == 45:
             closing_lane_list = closing_lane(step)
             for lane_id in closing_lane_list:
-                print(f"closing congested lane {lane_id} for 40 timesteps")
+                print(f"closing congested lane {lane_id} for 20 timesteps")
                 traci.lane.setDisallowed(lane_id, ['passenger'])
 
-        if step == 50:
+        if step == 65:
             for lane_id in closing_lane_list:
                 print(f"reopening lane {lane_id}")
                 traci.lane.setAllowed(lane_id, ['passenger'])
 
-        time.sleep(1)
 
 def create_vehicle_writer(manager: StreamManager) -> StreamWriter:
     manager.create_stream(scope_name=SCOPE,
