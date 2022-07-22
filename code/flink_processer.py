@@ -18,7 +18,7 @@ def speeding_vehicle(step: int) -> Set[str]:
     vehicle_source_ddl = f"""
                             CREATE TABLE VehicleTable (
                                 timestep FLOAT,
-                                id FLOAT,
+                                id STRING,
                                 `type` STRING,
                                 waiting FLOAT,
                                 lane STRING,
@@ -38,7 +38,7 @@ def speeding_vehicle(step: int) -> Set[str]:
     es_table_ddl = f"""
                     CREATE TABLE es_table ( 
                         timestep FLOAT,
-                        id FLOAT,
+                        id STRING,
                         `type` STRING,
                         waiting FLOAT,
                         lane STRING,
@@ -64,7 +64,7 @@ def speeding_vehicle(step: int) -> Set[str]:
 
     query = f"""
                 SELECT timestep, id, lane, pos, speed FROM VehicleTable
-                WHERE speed > 14.0 AND (lane = 'A0B0_0' or lane = 'B0A0_0') AND timestep > {step - 10} AND timestep <= {step}
+                WHERE speed > 14.0 AND timestep > {step - 10} AND timestep <= {step}
     """
 
     es_query = f"""

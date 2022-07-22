@@ -40,7 +40,7 @@ def run_simulation(
     for step in range(steps):
         traci.simulationStep()
 
-        time_array = time.localtime(step + BASE_TIME)
+        time_array = time.localtime(step + BASE_TIME - 8 * 60 * 60)
         ts = time.strftime("%Y-%m-%d %H:%M:%S", time_array)
 
         # write vehicle data
@@ -48,7 +48,7 @@ def run_simulation(
         for vehicle_id in vehicle_list:
             event = {
                 "timestep": float(step),
-                "id": float(vehicle_id),
+                "id": str(vehicle_id),
                 "type": traci.vehicle.getTypeID(vehicle_id),
                 "waiting": traci.vehicle.getWaitingTime(vehicle_id),
                 "lane": traci.vehicle.getLaneID(vehicle_id),
@@ -130,4 +130,4 @@ def sumo_generator(sumo_cfg: str, steps: int) -> None:
 
 if __name__ == "__main__":
     SUMO_CFG = os.path.realpath("../config/manhattan.sumocfg")
-    sumo_generator(SUMO_CFG, 1500)
+    sumo_generator(SUMO_CFG, 500)
