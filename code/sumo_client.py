@@ -7,7 +7,7 @@ import traci
 from pravega_client import StreamManager
 from pravega_client import StreamWriter
 
-from flink_processer import speeding_vehicle, closing_lane
+from flink_processer import speeding_vehicle, closing_lane, prepare_flink, connect_to_es
 
 os.environ["SUMO_HOME"] = "../bin/sumo-1.12.0"
 
@@ -37,6 +37,7 @@ def close_sumo() -> None:
 def run_simulation(
         steps: int, vehicle_writer: StreamWriter, lane_writer: StreamWriter) -> None:
     closing_lane_list = []
+    t_env = prepare_flink()
     for step in range(steps):
         traci.simulationStep()
 
@@ -76,7 +77,7 @@ def run_simulation(
 
         # stop speeding cars within 10 timesteps for 10 steps on step 25
         if step == 25:
-            speeding_set = speeding_vehicle(step)
+            speeding_set = speeding_vehicle(step, t_env)
             for vehicle_id in speeding_set:
                 print(f"stopping speeding vehicle {vehicle_id}")
                 traci.vehicle.setStop(vehID=vehicle_id,
@@ -87,7 +88,7 @@ def run_simulation(
 
         # close the most congested lane currently for 20 timesteps on step 45
         if step == 45:
-            closing_lane_list = closing_lane(step)
+            closing_lane_list = closing_lane(step, t_env)
             for lane_id in closing_lane_list:
                 print(f"closing congested lane {lane_id} for 20 timesteps")
                 traci.lane.setDisallowed(lane_id, ['passenger'])
@@ -96,6 +97,9 @@ def run_simulation(
             for lane_id in closing_lane_list:
                 print(f"reopening lane {lane_id}")
                 traci.lane.setAllowed(lane_id, ['passenger'])
+
+        if step == 150:
+            connect_to_es(t_env)
 
 
 def create_vehicle_writer(manager: StreamManager) -> StreamWriter:
